@@ -1,0 +1,11 @@
+# Google ADK for agent development
+google-adk>=0.1.0
+
+# MCP client for tool integration
+mcp>=1.0.0
+
+# YAML parsing for configuration
+pyyaml>=6.0
+
+# LiteLLM for multi-provider LLM support (optional)
+litellm>=1.0.0
