@@ -9,12 +9,14 @@ Supports:
 
 import logging
 import os
+import traceback
 
 from google.adk.agents import Agent, LlmAgent
 
 from docs_agent.loader import load_instruction, load_mcp_toolsets
 
-logging.basicConfig(level=logging.INFO)
+# Enable debug logging for troubleshooting
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # -----------------------
@@ -32,11 +34,21 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 # -----------------------
 # Load resources
 # -----------------------
-system_instruction = load_instruction(INSTRUCTION_PATH)
+try:
+    system_instruction = load_instruction(INSTRUCTION_PATH)
+    logger.debug(f"Loaded instruction with {len(system_instruction)} characters")
+except Exception as e:
+    logger.error(f"Failed to load instructions: {e}")
+    traceback.print_exc()
+    system_instruction = "You are a helpful documentation assistant."
 
-# TODO: Re-enable MCP toolsets after fixing connection issues
-# mcp_toolsets = load_mcp_toolsets(MCP_CONFIG_PATH)
-mcp_toolsets = []  # Temporarily disabled for debugging
+try:
+    mcp_toolsets = load_mcp_toolsets(MCP_CONFIG_PATH)
+    logger.debug(f"Loaded {len(mcp_toolsets)} MCP toolsets")
+except Exception as e:
+    logger.error(f"Failed to load MCP toolsets: {e}")
+    traceback.print_exc()
+    mcp_toolsets = []
 
 # -----------------------
 # Model selection
@@ -47,28 +59,37 @@ if GOOGLE_API_KEY:
 else:
     logger.info("Using LiteLLM model")
 
-    if not MODEL_API or not MODEL_ID:
+    if not MODEL_ID:
         raise RuntimeError(
-            "GOOGLE_API_KEY is not set, but MODEL_API / MODEL_ID is missing"
+            "GOOGLE_API_KEY is not set, and MODEL_ID is missing"
         )
 
     from google.adk.models.lite_llm import LiteLlm
 
-    model = LiteLlm(
-        model=MODEL_ID,
-        api_base=MODEL_API,
-        extra_headers={"Authorization": f"Bearer {MODEL_TOKEN}"}
-        if MODEL_TOKEN
-        else None,
-    )
+    # Build kwargs for LiteLlm - only include api_base if set
+    litellm_kwargs = {"model": MODEL_ID}
+    if MODEL_API:
+        litellm_kwargs["api_base"] = MODEL_API
+    if MODEL_TOKEN:
+        litellm_kwargs["extra_headers"] = {"Authorization": f"Bearer {MODEL_TOKEN}"}
+
+    model = LiteLlm(**litellm_kwargs)
 
 # -----------------------
 # Create the agent
 # -----------------------
-root_agent = Agent(
-    name="docs_agent",
-    model=model,
-    description="Agent to answer documentation related questions.",
-    instruction=system_instruction,
-    tools=mcp_toolsets,
-)
+try:
+    logger.debug(f"Creating agent with model: {model}")
+    logger.debug(f"Number of tools: {len(mcp_toolsets)}")
+    root_agent = Agent(
+        name="docs_agent",
+        model=model,
+        description="Agent to answer documentation related questions.",
+        instruction=system_instruction,
+        tools=mcp_toolsets,
+    )
+    logger.info("Agent created successfully")
+except Exception as e:
+    logger.error(f"Failed to create agent: {e}")
+    traceback.print_exc()
+    raise

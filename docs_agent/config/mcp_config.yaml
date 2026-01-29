@@ -1,14 +1,18 @@
 mcp_servers:
+  # Red Hat Documentation MCP Server (staging)
+  # Note: verify_ssl is false because this is an internal staging server with self-signed cert
   - name: docs-mcp
     mode: stream
     enabled: true
     url: "https://docs-mcp-stage.apps.int.spoke.preprod.us-east-1.aws.paas.redhat.com/mcp"
-    timeout: 30.0
+    timeout: 60.0
+    verify_ssl: false
 
+  # RHDS Component MCP Server
   - name: rhds-mcp
     mode: stdio
     enabled: true
     command: npx
     args:
       - "@scarlet-mesh/mcp-rhds"
-    timeout: 30.0
+    timeout: 60.0

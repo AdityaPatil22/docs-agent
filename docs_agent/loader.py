@@ -12,12 +12,16 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import httpx
 import yaml
 from google.adk.tools.mcp_tool import MCPToolset, StdioConnectionParams
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 from mcp.client.stdio import StdioServerParameters
 
 from docs_agent.utils import resolve_file_path
+
+# Flag to track if SSL verification has been disabled
+_ssl_verification_disabled = False
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +215,31 @@ def _create_stdio_toolset(server: dict, base_dir: Path, timeout: float) -> MCPTo
     return MCPToolset(connection_params=connection_params)
 
 
+def _disable_ssl_verification():
+    """
+    Disable SSL verification for httpx clients.
+    
+    This is necessary for internal/staging servers with self-signed certificates.
+    WARNING: Only use this for trusted internal servers, not in production with public servers.
+    """
+    global _ssl_verification_disabled
+    
+    if _ssl_verification_disabled:
+        return
+    
+    # Monkey-patch httpx.AsyncClient to disable SSL verification
+    original_async_client = httpx.AsyncClient
+    
+    class InsecureAsyncClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs.setdefault('verify', False)
+            super().__init__(*args, **kwargs)
+    
+    httpx.AsyncClient = InsecureAsyncClient
+    _ssl_verification_disabled = True
+    logger.warning("SSL verification disabled for httpx clients (internal/staging servers)")
+
+
 def _create_http_toolset(server: dict, timeout: float) -> MCPToolset:
     """Create an HTTP/Stream-based MCP toolset."""
     url = server.get("url")
@@ -219,6 +248,11 @@ def _create_http_toolset(server: dict, timeout: float) -> MCPToolset:
         raise ValueError("HTTP MCP server requires 'url' configuration")
 
     url = _expand_env_vars(url)
+    
+    # Check if SSL verification should be disabled (for internal/staging servers)
+    verify_ssl = server.get("verify_ssl", True)
+    if not verify_ssl:
+        _disable_ssl_verification()
 
     connection_params = StreamableHTTPConnectionParams(url=url, timeout=timeout)
 
